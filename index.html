@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>スマタン - 高機能スマート単語帳</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon.png">
+    <meta name="theme-color" content="#007AFF">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* 🍏 iOSベースの全体設定 */
+        body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; background-color: #F2F2F7; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; color: #1C1C1E; padding-bottom: 90px; -webkit-tap-highlight-color: transparent; }
+        .container { max-width: 600px; width: 100%; box-sizing: border-box; padding: 16px; }
+        
+        .header { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: #1C1C1E; width: 100%; text-align: center; padding: 16px 0; font-size: 18px; font-weight: 600; border-bottom: 0.5px solid #E5E5EA; position: sticky; top: 0; z-index: 100; }
+        
+        .tab-menu { display: flex; width: 100%; max-width: 600px; background: rgba(249, 249, 249, 0.9); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 0.5px solid #E5E5EA; position: fixed; bottom: 0; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+        .tab-btn { flex: 1; text-align: center; padding: 10px 0 6px; cursor: pointer; color: #8E8E93; transition: color 0.2s; font-size: 10px; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .tab-btn .icon { font-size: 22px; margin-bottom: 2px; }
+        .tab-btn.active { color: #007AFF; }
+        
+        .tab-content { display: none; animation: fadeIn 0.2s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card-box { background: white; padding: 20px; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+        .card-box h3 { margin-top: 0; font-size: 17px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 6px; }
+        
+        .word-display { min-height: 220px; background: #F2F2F7; border-radius: 14px; display: flex; justify-content: center; align-items: center; font-size: 26px; font-weight: 700; text-align: center; cursor: pointer; padding: 25px; box-sizing: border-box; transition: transform 0.1s, background 0.3s; word-break: break-word; }
+        .word-display:active { transform: scale(0.97); }
+        
+        .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; color: white; background: #007AFF; margin-bottom: 10px; transition: all 0.2s; text-align: center; }
+        .btn:active { opacity: 0.7; }
+        .btn-secondary { background: #E5E5EA; color: #007AFF; }
+        .btn-danger { background: #FF3B30; color: white; }
+        .btn-learned { background: #34C759; color: white; } 
+        
+        .flex-group { display: flex; gap: 10px; align-items: center; }
+        
+        input[type="text"], textarea, select { width: 100%; padding: 12px 14px; margin-bottom: 14px; border: none; border-radius: 10px; box-sizing: border-box; font-size: 16px; background: #7676801F; color: #1C1C1E; font-family: inherit; }
+        
+        .dict-item { padding: 14px 16px; border-bottom: 0.5px solid #E5E5EA; display: flex; justify-content: space-between; align-items: center; margin-left: -16px; margin-right: -16px; }
+        
+        .switch-container { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; font-size: 16px; }
+        .ios-switch { position: relative; width: 51px; height: 31px; -webkit-appearance: none; background: #E5E5EA; outline: none; border-radius: 15.5px; cursor: pointer; transition: background 0.3s; margin: 0; }
+        .ios-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; background: white; border-radius: 50%; box-shadow: 0 3px 8px rgba(0,0,0,0.15), 0 1px 1px rgba(0,0,0,0.16); transition: transform 0.3s cubic-bezier(0.2, 0.85, 0.32, 1.2); }
+        .ios-switch:checked { background: #34C759; }
+        .ios-switch:checked::after { transform: translateX(20px); }
+
+        .progress-bar { background: #E5E5EA; border-radius: 4px; height: 8px; width: 100%; margin-top: 8px; overflow: hidden; }
+        .progress-fill { background: #007AFF; height: 100%; width: 0%; transition: width 0.4s ease-out; }
+        
+        .badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; color: white; font-weight: 600; white-space: nowrap; }
+        .badge-learned { background: #34C759; }
+        .badge-not { background: #FF9F0A; }
+        
+        .quiz-option { background: #F2F2F7; color: #1C1C1E; border: none; border-radius: 12px; padding: 16px; margin-bottom: 10px; text-align: left; width: 100%; font-size: 16px; font-weight: 500; cursor: pointer; }
+        
+        #toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%) scale(0.9); background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: white; padding: 12px 24px; border-radius: 20px; font-weight: 500; font-size: 15px; z-index: 1000; opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #toast.show { opacity: 1; transform: translateX(-50%) scale(1); }
+
+        .network-status { position: absolute; top: 18px; right: 16px; font-size: 11px; font-weight: 600; color: #8E8E93; }
+        .status-online { color: #34C759; }
+        .status-offline { color: #FF3B30; }
+    </style>
+</head>
+<body>
+
+    <div id="toast">通知メッセージ</div>
+    
+    <div class="header">
+        スマタン
+        <span id="networkStatus" class="network-status status-online">●</span>
+    </div>
+
+    <div class="tab-menu">
+        <div class="tab-btn active" onclick="switchTab('manage')">
+            <div class="icon">📁</div>管理
+        </div>
+        <div class="tab-btn" onclick="switchTab('card')">
+            <div class="icon">🗂️</div>単語帳
+        </div>
+        <div class="tab-btn" onclick="switchTab('dict')">
+            <div class="icon">🔍</div>辞書
+        </div>
+        <div class="tab-btn" onclick="switchTab('quiz')">
+            <div class="icon">🎮</div>クイズ
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="tab-manage" class="tab-content active">
+            <div class="card-box">
+                <h3>📚 単語帳の切り替え</h3>
+                <select id="wordbookSelector" onchange="changeWordbook()"></select>
+                <div class="flex-group" style="margin-top:10px;">
+                    <input type="text" id="newWordbookName" placeholder="新しい単語帳の名前" style="margin-bottom:0;">
+                    <button class="btn btn-secondary" onclick="createNewWordbook()" style="margin-bottom:0; width:80px;">作成</button>
+                </div>
+            </div>
+
+            <div class="card-box">
+                <h3>➕ 単語の登録</h3>
+                <input type="text" id="inputQuestion" placeholder="単語・キーワード">
+                <textarea id="inputAnswer" rows="2" placeholder="意味・定義"></textarea>
+                <button class="btn" onclick="addNewWord()">登録する</button>
+            </div>
+
+            <div class="card-box">
+                <h3>🔗 共有</h3>
+                <p style="font-size:13px; color:#8E8E93; margin-bottom:8px;">共有コード（タップでコピー）</p>
+                <input type="text" id="shareCodeDisplay" readonly onclick="this.select(); document.execCommand('copy'); showToast('コピーしました');" style="color:#007AFF; font-weight:bold; text-align:center;">
+                
+                <p style="font-size:13px; color:#8E8E93; margin-bottom:8px; margin-top:16px;">単語帳の追加</p>
+                <div class="flex-group">
+                    <input type="text" id="importCodeInput" placeholder="コードを入力" style="margin-bottom:0;">
+                    <button class="btn btn-secondary" onclick="importWordbook()" style="margin-bottom:0; width:80px;">追加</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-card" class="tab-content">
+            <div class="card-box" style="background:transparent; box-shadow:none; padding:0 0 16px 0;">
+                <div class="switch-container">
+                    <span>意味から出題</span>
+                    <input type="checkbox" id="reverseSwitch" class="ios-switch" onchange="toggleReverse()">
+                </div>
+            </div>
+            
+            <div class="card-box" style="padding:16px;">
+                <div style="display:flex; justify-content:space-between; font-size:15px; color:#8E8E93; margin-bottom:12px; font-weight:600;">
+                    <span id="cardProgressIndex">0 / 0</span>
+                    <span id="cardLearnedBadge" class="badge">未習得</span>
+                </div>
+                
+                <div class="word-display" id="mainWordCard" onclick="flipCard()">単語データがありません</div>
+                
+                <div style="margin-top:20px;">
+                    <button id="masteredBtn" class="btn" onclick="toggleLearnedFlag()">マスター済みにする</button>
+                </div>
+                
+                <div class="flex-group" style="margin-top:16px;">
+                    <button class="btn btn-secondary" onclick="moveCard(-1)">前へ</button>
+                    <button class="btn btn-secondary" onclick="moveCard(1)">次へ</button>
+                </div>
+                <p style="text-align:center; font-size:12px; color:#9ca3af; margin-top:15px;">※カードは自動的にシャッフルされます</p>
+            </div>
+        </div>
+
+        <div id="tab-dict" class="tab-content">
+            <div class="card-box">
+                <div style="font-weight:600; font-size:15px; color:#1C1C1E; display:flex; justify-content:space-between;">
+                    <span>全体習得率</span>
+                    <span id="dictProgressPercent" style="color:#007AFF;">0%</span>
+                </div>
+                <div class="progress-bar"><div id="dictProgressBar" class="progress-fill"></div></div>
+            </div>
+
+            <input type="text" id="dictSearchInput" placeholder="🔍 検索" oninput="renderDictionary()">
+            
+            <select id="dictFilter" onchange="renderDictionary()" style="background:#fff;">
+                <option value="all">すべての単語</option>
+                <option value="not_learned">未習得のみ</option>
+                <option value="weak">苦手な単語のみ</option>
+            </select>
+            
+            <div class="card-box" style="padding:16px;">
+                <div class="flex-group" style="margin-bottom: 16px;">
+                    <button class="btn btn-secondary" id="toggleDeleteBtn" onclick="toggleDeleteMode()" style="margin-bottom:0; flex: 1;">🗑️ 一括削除モード</button>
+                    <button class="btn btn-danger" id="executeDeleteBtn" onclick="executeDelete()" style="display:none; margin-bottom:0; flex: 1;">確定（削除）</button>
+                </div>
+                <div id="dictionaryList"></div>
+            </div>
+        </div>
+
+        <div id="tab-quiz" class="tab-content">
+            <div id="quizSetupScreen">
+                <div class="card-box">
+                    <h3 style="justify-content:center; font-size:20px;">クイズ統計</h3>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 20px; padding: 10px 0;">
+                        <div style="position: relative; width: 110px; height: 110px;">
+                            <div id="quizPieChart" style="width: 100%; height: 100%; border-radius: 50%; background: conic-gradient(#E5E5EA 0% 100%);"></div>
+                            <div style="position: absolute; top: 15px; left: 15px; width: 80px; height: 80px; background: white; border-radius: 50%; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                                <span style="font-size: 10px; color: #8E8E93;">正答率</span>
+                                <span id="quizAccuracyText" style="font-size: 20px; font-weight: 700; color: #1C1C1E;">0%</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 14px; color: #3A3A3C; line-height: 2.0; font-weight:500;">
+                            <div style="display: flex; align-items: center;"><span style="display:inline-block; width:10px; height:10px; background:#34C759; border-radius:50%; margin-right:8px;"></span>正答：<strong id="statCorrect" style="margin-left:auto; min-width:35px; text-align:right;">0%</strong></div>
+                            <div style="display: flex; align-items: center;"><span style="display:inline-block; width:10px; height:10px; background:#FF3B30; border-radius:50%; margin-right:8px;"></span>誤答：<strong id="statIncorrect" style="margin-left:auto; min-width:35px; text-align:right;">0%</strong></div>
+                            <div style="display: flex; align-items: center;"><span style="display:inline-block; width:10px; height:10px; background:#E5E5EA; border-radius:50%; margin-right:8px;"></span>未答：<strong id="statUnanswered" style="margin-left:auto; min-width:35px; text-align:right;">0%</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-box">
+                    <div class="switch-container">
+                        <span>意味から出題（反転）</span>
+                        <input type="checkbox" id="quizReverseSwitch" class="ios-switch">
+                    </div>
+                    <button class="btn" onclick="startQuiz()" style="margin-top:10px;">クイズ開始</button>
+                </div>
+            </div>
+
+            <div id="quizPlayScreen" style="display:none;">
+                <div style="text-align:center; font-size:15px; color:#8E8E93; font-weight:600; margin-bottom:16px;" id="quizProgressText">第 1 問</div>
+                <div class="card-box" style="min-height:150px; display:flex; align-items:center; justify-content:center; padding:30px;">
+                    <div id="quizQuestionText" style="font-size:22px; font-weight:700; text-align:center;">問題文</div>
+                </div>
+                <div id="quizOptionsContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://qcfvvxllllevcrzfddui.supabase.co";
+        const SUPABASE_ANON_KEY = "sb_publishable_bUufDEG1dlvm8J6_t5Qzxw_qAXJu90g";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let myWordbooks = JSON.parse(localStorage.getItem('my_wordbooks')) || [];
+        let currentWordbookId = localStorage.getItem('current_wordbook_id');
+        let words = []; let cardOrder = []; let cardIndex = 0; let isCardFront = true; let isReversedMode = false;
+        let quizSession = []; let quizIndex = 0; let isQuizReversed = false; let isDeleteMode = false; let selectedForDelete = new Set();
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg; t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2000);
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            if(myWordbooks.length === 0) { const initId = generateUUID(); myWordbooks.push({ id: initId, name: "最初の単語帳" }); currentWordbookId = initId; saveWordbooks(); } 
+            else if (!currentWordbookId) { currentWordbookId = myWordbooks[0].id; }
+            renderWordbookSelector(); document.getElementById('shareCodeDisplay').value = currentWordbookId; await loadData();
+        });
+
+        function saveWordbooks() { localStorage.setItem('my_wordbooks', JSON.stringify(myWordbooks)); localStorage.setItem('current_wordbook_id', currentWordbookId); document.getElementById('shareCodeDisplay').value = currentWordbookId; }
+        function renderWordbookSelector() { const sel = document.getElementById('wordbookSelector'); sel.innerHTML = ""; myWordbooks.forEach(wb => { const opt = document.createElement('option'); opt.value = wb.id; opt.innerText = wb.name; if(wb.id === currentWordbookId) opt.selected = true; sel.appendChild(opt); }); }
+        async function changeWordbook() { currentWordbookId = document.getElementById('wordbookSelector').value; saveWordbooks(); cardOrder = []; await loadData(); showToast("切り替えました"); }
+        async function createNewWordbook() { const name = document.getElementById('newWordbookName').value.trim(); if(!name) { showToast("名前を入力してください"); return; } const newId = generateUUID(); myWordbooks.push({ id: newId, name: name }); currentWordbookId = newId; saveWordbooks(); renderWordbookSelector(); document.getElementById('newWordbookName').value = ""; cardOrder = []; await loadData(); showToast("作成しました"); }
+        async function importWordbook() { const code = document.getElementById('importCodeInput').value.trim(); if (!code) return; if (!navigator.onLine) { showToast("ネット環境が必要です"); return; } if(myWordbooks.find(wb => wb.id === code)) { showToast("登録済みのコードです"); return; } const name = prompt("単語帳の名前を決めてください", "共有された単語帳"); if(!name) return; myWordbooks.push({ id: code, name: name }); currentWordbookId = code; saveWordbooks(); renderWordbookSelector(); document.getElementById('importCodeInput').value = ""; cardOrder = []; await loadData(); showToast("取得しました"); }
+
+        async function loadData() {
+            if (navigator.onLine) { try { let { data, error } = await supabaseClient.from('words').select('*').eq('wordbook_id', currentWordbookId); if (!error && data) { words = data; localStorage.setItem(`cached_words_${currentWordbookId}`, JSON.stringify(words)); } } catch (e) { loadFromCache(); } } 
+            else { loadFromCache(); }
+            refreshAllScreens();
+        }
+        function loadFromCache() { const cache = localStorage.getItem(`cached_words_${currentWordbookId}`); words = cache ? JSON.parse(cache) : []; }
+
+        async function addNewWord() {
+            const q = document.getElementById('inputQuestion').value.trim(); const a = document.getElementById('inputAnswer').value.trim(); if (!q || !a) { showToast("入力してください"); return; }
+            const newWordObj = { wordbook_id: currentWordbookId, question: q, answer: a, is_learned: false, correct_count: 0, total_count: 0 };
+            words.push(newWordObj); cardOrder = []; localStorage.setItem(`cached_words_${currentWordbookId}`, JSON.stringify(words));
+            if (navigator.onLine) supabaseClient.from('words').insert([newWordObj]).then();
+            document.getElementById('inputQuestion').value = ""; document.getElementById('inputAnswer').value = ""; await loadData(); showToast("登録しました"); 
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            const clickedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(btn => btn.getAttribute('onclick').includes(tabId));
+            if(clickedBtn) clickedBtn.classList.add('active');
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            window.scrollTo(0, 0); if(tabId !== 'dict' && isDeleteMode) toggleDeleteMode(); if(tabId === 'quiz') endQuiz(); if(tabId === 'card') renderCard();
+        }
+
+        function refreshAllScreens() { renderCard(); renderDictionary(); renderQuizStats(); }
+
+        function renderCard() {
+            const card = document.getElementById('mainWordCard'); 
+            const indexDisp = document.getElementById('cardProgressIndex');
+            const badge = document.getElementById('cardLearnedBadge'); 
+            const masteredBtn = document.getElementById('masteredBtn'); 
+
+            if (words.length === 0) { 
+                card.innerText = "データがありません"; indexDisp.innerText = "0 / 0"; 
+                masteredBtn.style.display = "none"; return; 
+            }
+            masteredBtn.style.display = "block";
+
+            if(cardOrder.length !== words.length) { cardOrder = words.map((_, i) => i).sort(() => Math.random() - 0.5); cardIndex = 0; }
+            if(cardIndex >= words.length) cardIndex = 0;
+            const currentWord = words[cardOrder[cardIndex]];
+            
+            indexDisp.innerText = `${cardIndex + 1} / ${words.length}`;
+
+            if(currentWord.is_learned) {
+                badge.innerText = "マスター済"; badge.className = "badge badge-learned";
+                masteredBtn.innerText = "マスター解除";
+                masteredBtn.className = "btn btn-learned";
+            } else {
+                badge.innerText = "未習得"; badge.className = "badge badge-not";
+                masteredBtn.innerText = "マスター済みにする";
+                masteredBtn.className = "btn btn-secondary";
+            }
+
+            if (isReversedMode) { card.innerText = isCardFront ? currentWord.answer : currentWord.question; card.style.background = isCardFront ? "#FFF4CC" : "#F2F2F7"; } 
+            else { card.innerText = isCardFront ? currentWord.question : currentWord.answer; card.style.background = isCardFront ? "#F2F2F7" : "#FFF4CC"; }
+        }
+
+        async function toggleLearnedFlag() {
+            if (words.length === 0) return;
+            const currentWord = words[cardOrder[cardIndex]];
+            currentWord.is_learned = !currentWord.is_learned;
+            localStorage.setItem(`cached_words_${currentWordbookId}`, JSON.stringify(words));
+            renderCard(); renderDictionary();
+            if(navigator.onLine && currentWord.id) { await supabaseClient.from('words').update({ is_learned: currentWord.is_learned }).eq('id', currentWord.id); }
+            if(currentWord.is_learned) showToast("習得済みにしました！");
+        }
+
+        function flipCard() { isCardFront = !isCardFront; renderCard(); }
+        function moveCard(dir) { cardIndex = (cardIndex + dir + words.length) % words.length; isCardFront = true; renderCard(); }
+        function toggleReverse() { isReversedMode = document.getElementById('reverseSwitch').checked; isCardFront = true; renderCard(); }
+
+        function toggleDeleteMode() {
+            isDeleteMode = !isDeleteMode; selectedForDelete.clear();
+            const toggleBtn = document.getElementById('toggleDeleteBtn'); const execBtn = document.getElementById('executeDeleteBtn');
+            if (isDeleteMode) { toggleBtn.innerText = "キャンセル"; toggleBtn.style.background = "#E5E5EA"; toggleBtn.style.color = "#1C1C1E"; execBtn.style.display = "block"; } 
+            else { toggleBtn.innerText = "🗑️ 一括削除モード"; toggleBtn.style.background = "#E5E5EA"; toggleBtn.style.color = "#007AFF"; execBtn.style.display = "none"; }
+            renderDictionary();
+        }
+        function toggleSelectDelete(index) { if (selectedForDelete.has(index)) { selectedForDelete.delete(index); } else { selectedForDelete.add(index); } renderDictionary(); }
+        async function executeDelete() { if (selectedForDelete.size === 0) { showToast("選択してください"); return; } if (!confirm(`削除しますか？`)) return; const targets = Array.from(selectedForDelete).map(i => words[i]); words = words.filter((_, i) => !selectedForDelete.has(i)); const idsToDelete = targets.map(t => t.id).filter(id => id); localStorage.setItem(`cached_words_${currentWordbookId}`, JSON.stringify(words)); cardOrder = []; if (navigator.onLine && idsToDelete.length > 0) { await supabaseClient.from('words').delete().in('id', idsToDelete); } toggleDeleteMode(); await loadData(); showToast("削除しました"); }
+        function renderDictionary() {
+            const list = document.getElementById('dictionaryList'); const filter = document.getElementById('dictFilter').value; const searchKeyword = document.getElementById('dictSearchInput').value.trim().toLowerCase(); 
+            list.innerHTML = ""; const learnedCount = words.filter(w => w.is_learned).length; const percent = words.length > 0 ? Math.round((learnedCount / words.length) * 100) : 0; document.getElementById('dictProgressPercent').innerText = `${percent}%`; document.getElementById('dictProgressBar').style.width = `${percent}%`;
+            let displayWords = [...words]; if(filter === 'not_learned') displayWords = displayWords.filter(w => !w.is_learned); if(filter === 'weak') displayWords = displayWords.filter(w => w.total_count > 0 && (w.correct_count / w.total_count) < 0.6); if(searchKeyword !== "") { displayWords = displayWords.filter(w => w.question.toLowerCase().includes(searchKeyword) || w.answer.toLowerCase().includes(searchKeyword)); }
+            if(displayWords.length === 0) { list.innerHTML = `<div style="padding:30px 0; text-align:center; color:#8E8E93;">見つかりませんでした</div>`; return; }
+            displayWords.forEach(w => { const originalIndex = words.indexOf(w); const item = document.createElement('div'); item.className = "dict-item";
+                if (isDeleteMode) { const isSelected = selectedForDelete.has(originalIndex); item.style.cursor = "pointer"; if (isSelected) item.style.background = "#FFEBEB";
+                    item.innerHTML = `<div style="display:flex; align-items:center; width:100%;"><div style="width:24px; height:24px; border-radius:50%; border:2px solid ${isSelected ? '#FF3B30' : '#C7C7CC'}; background:${isSelected ? '#FF3B30' : 'transparent'}; margin-right:15px; display:flex; justify-content:center; align-items:center; flex-shrink: 0;">${isSelected ? '<span style="color:white; font-size:14px; font-weight:bold;">✓</span>' : ''}</div><div style="flex:1;"><strong style="font-size:17px; color:#1C1C1E;">${w.question}</strong><br><span style="font-size:15px; color:#3A3A3C; line-height:1.4; display:inline-block; margin-top:4px;">${w.answer}</span></div></div>`;
+                    item.onclick = () => toggleSelectDelete(originalIndex);
+                } else { item.innerHTML = `<div style="flex:1; margin-right:15px;"><strong style="font-size:17px; color:#1C1C1E;">${w.question}</strong><br><span style="font-size:15px; color:#3A3A3C; line-height:1.4; display:inline-block; margin-top:4px;">${w.answer}</span><br><span style="font-size:12px; color:#8E8E93; margin-top:6px; display:inline-block;">正答率: ${w.total_count > 0 ? Math.round((w.correct_count / w.total_count) * 100) : 0}%</span></div><span class="badge ${w.is_learned ? 'badge-learned' : 'badge-not'}">${w.is_learned ? 'マスター' : '未習得'}</span>`; }
+                list.appendChild(item);
+            });
+        }
+
+        function renderQuizStats() {
+            const chart = document.getElementById('quizPieChart'); if (!chart) return; const totalWords = words.length;
+            if (totalWords === 0) { chart.style.background = `conic-gradient(#E5E5EA 0% 100%)`; document.getElementById('quizAccuracyText').innerText = "0%"; return; }
+            const unanswered = words.filter(w => w.total_count === 0).length; const answered = totalWords - unanswered;
+            let totalCorrect = 0; let totalAttempts = 0; words.forEach(w => { totalCorrect += w.correct_count; totalAttempts += w.total_count; });
+            let correctRatio = totalAttempts > 0 ? totalCorrect / totalAttempts : 0;
+            const gray = (unanswered / totalWords) * 100; const green = (answered / totalWords) * correctRatio * 100; const red = (answered / totalWords) * (1 - correctRatio) * 100;
+            chart.style.background = `conic-gradient(#34C759 0% ${green}%, #FF3B30 ${green}% ${green + red}%, #E5E5EA ${green + red}% 100%)`;
+            document.getElementById('quizAccuracyText').innerText = `${totalAttempts > 0 ? Math.round(correctRatio * 100) : 0}%`;
+            document.getElementById('statCorrect').innerText = `${Math.round(green)}%`; document.getElementById('statIncorrect').innerText = `${Math.round(red)}%`; document.getElementById('statUnanswered').innerText = `${Math.round(gray)}%`;
+        }
+
+        function startQuiz() { if (words.length < 4) { showToast("4つ以上必要です"); return; } isQuizReversed = document.getElementById('quizReverseSwitch').checked; document.getElementById('quizSetupScreen').style.display = "none"; document.getElementById('quizPlayScreen').style.display = "block"; quizSession = [...words].sort((a, b) => (a.total_count > 0 ? a.correct_count / a.total_count : 0) - (b.total_count > 0 ? b.correct_count / b.total_count : 0)).slice(0, 10); quizIndex = 0; showQuizQuestion(); }
+        function showQuizQuestion() { if(quizIndex >= quizSession.length) { showToast("クイズ終了！"); endQuiz(); return; } const current = quizSession[quizIndex]; document.getElementById('quizProgressText').innerText = `第 ${quizIndex + 1} 問 / 全 ${quizSession.length} 問`; const correct = isQuizReversed ? current.question : current.answer; document.getElementById('quizQuestionText').innerText = isQuizReversed ? current.answer : current.question; let options = [correct]; let pool = words.filter(w => w.id !== current.id).map(w => isQuizReversed ? w.question : w.answer); pool = pool.sort(() => 0.5 - Math.random()); for(let i=0; i<3 && i<pool.length; i++) options.push(pool[i]); options = options.sort(() => 0.5 - Math.random()); const container = document.getElementById('quizOptionsContainer'); container.innerHTML = ""; options.forEach(opt => { const btn = document.createElement('button'); btn.className = "quiz-option"; btn.innerText = opt; btn.onclick = () => checkQuizAnswer(opt, correct, btn); container.appendChild(btn); }); }
+        async function checkQuizAnswer(sel, cor, btn) { const btns = document.querySelectorAll('.quiz-option'); btns.forEach(b => b.disabled = true); const current = quizSession[quizIndex]; current.total_count++; if(sel === cor) { btn.style.background = "#E4F8EA"; btn.style.color = "#34C759"; showToast("⭕ 正解！"); current.correct_count++; } else { btn.style.background = "#FFEBEB"; btn.style.color = "#FF3B30"; showToast(`❌ 正解は「${cor}」`); } localStorage.setItem(`cached_words_${currentWordbookId}`, JSON.stringify(words)); if(navigator.onLine && current.id) { await supabaseClient.from('words').update({ total_count: current.total_count, correct_count: current.correct_count }).eq('id', current.id); } quizIndex++; setTimeout(() => { showQuizQuestion(); }, 1200); }
+        function endQuiz() { document.getElementById('quizSetupScreen').style.display = "block"; document.getElementById('quizPlayScreen').style.display = "none"; refreshAllScreens(); }
+        function generateUUID() { return 'xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8); return v.toString(16); }); }
+        function updateNetworkStatus() { const b = document.getElementById('networkStatus'); if (navigator.onLine) { b.innerText = "●"; b.className = "network-status status-online"; } else { b.innerText = "● ｵﾌﾗｲﾝ"; b.className = "network-status status-offline"; } }
+    </script>
+</body>
+</html>
