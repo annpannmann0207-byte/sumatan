@@ -11,7 +11,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        /* 🍏 iOSベースの全体設定 */
         body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; background-color: #F2F2F7; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; color: #1C1C1E; padding-bottom: 90px; -webkit-tap-highlight-color: transparent; }
         .container { max-width: 600px; width: 100%; box-sizing: border-box; padding: 16px; }
         
@@ -95,7 +94,10 @@
         <div id="tab-manage" class="tab-content active">
             <div class="card-box">
                 <h3>📚 単語帳の切り替え</h3>
-                <select id="wordbookSelector" onchange="changeWordbook()"></select>
+                <div class="flex-group">
+                    <select id="wordbookSelector" onchange="changeWordbook()" style="margin-bottom:0;"></select>
+                    <button class="btn btn-secondary" onclick="renameWordbook()" style="margin-bottom:0; width:65px; padding: 12px 10px; font-size: 14px;">変更</button>
+                </div>
                 <div class="flex-group" style="margin-top:10px;">
                     <input type="text" id="newWordbookName" placeholder="新しい単語帳の名前" style="margin-bottom:0;">
                     <button class="btn btn-secondary" onclick="createNewWordbook()" style="margin-bottom:0; width:80px;">作成</button>
@@ -107,6 +109,7 @@
                 <input type="text" id="inputQuestion" placeholder="単語・キーワード">
                 <textarea id="inputAnswer" rows="2" placeholder="意味・定義"></textarea>
                 <button class="btn" onclick="addNewWord()">登録する</button>
+                <p style="text-align:center; font-size:12px; color:#8E8E93; margin-top:0;">※単語欄でEnterを押すと意味欄へ移動<br>※意味欄で2回連続Enterを押すと登録されます</p>
             </div>
 
             <div class="card-box">
@@ -169,7 +172,7 @@
             
             <div class="card-box" style="padding:16px;">
                 <div class="flex-group" style="margin-bottom: 16px;">
-                    <button class="btn btn-secondary" id="toggleDeleteBtn" onclick="toggleDeleteMode()" style="margin-bottom:0; flex: 1;">🗑️ 一括削除モード</button>
+                    <button class="btn btn-secondary" id="toggleDeleteBtn" onclick="toggleDeleteMode()" style="margin-bottom:0; flex: 1;">単語削除</button>
                     <button class="btn btn-danger" id="executeDeleteBtn" onclick="executeDelete()" style="display:none; margin-bottom:0; flex: 1;">確定（削除）</button>
                 </div>
                 <div id="dictionaryList"></div>
@@ -235,12 +238,55 @@
             if(myWordbooks.length === 0) { const initId = generateUUID(); myWordbooks.push({ id: initId, name: "最初の単語帳" }); currentWordbookId = initId; saveWordbooks(); } 
             else if (!currentWordbookId) { currentWordbookId = myWordbooks[0].id; }
             renderWordbookSelector(); document.getElementById('shareCodeDisplay').value = currentWordbookId; await loadData();
+
+            // 🆕 キーボードUXの改善
+            const qInput = document.getElementById('inputQuestion');
+            const aInput = document.getElementById('inputAnswer');
+            
+            qInput.addEventListener('keydown', (e) => {
+                // IME変換中でない時だけ発動
+                if (e.key === 'Enter' && !e.isComposing) {
+                    e.preventDefault();
+                    aInput.focus();
+                }
+            });
+
+            let lastAKey = '';
+            aInput.addEventListener('keydown', async (e) => {
+                if (e.key === 'Enter' && !e.isComposing) {
+                    if (lastAKey === 'Enter') {
+                        e.preventDefault(); // 余分な改行を防ぐ
+                        aInput.value = aInput.value.trim(); // 追加された改行を消す
+                        await addNewWord();
+                        qInput.focus(); // 単語欄にフォーカスを戻す
+                        lastAKey = ''; // リセット
+                    } else {
+                        lastAKey = 'Enter';
+                    }
+                } else if (e.key !== 'Enter') {
+                    lastAKey = e.key;
+                }
+            });
         });
 
         function saveWordbooks() { localStorage.setItem('my_wordbooks', JSON.stringify(myWordbooks)); localStorage.setItem('current_wordbook_id', currentWordbookId); document.getElementById('shareCodeDisplay').value = currentWordbookId; }
         function renderWordbookSelector() { const sel = document.getElementById('wordbookSelector'); sel.innerHTML = ""; myWordbooks.forEach(wb => { const opt = document.createElement('option'); opt.value = wb.id; opt.innerText = wb.name; if(wb.id === currentWordbookId) opt.selected = true; sel.appendChild(opt); }); }
         async function changeWordbook() { currentWordbookId = document.getElementById('wordbookSelector').value; saveWordbooks(); cardOrder = []; await loadData(); showToast("切り替えました"); }
         async function createNewWordbook() { const name = document.getElementById('newWordbookName').value.trim(); if(!name) { showToast("名前を入力してください"); return; } const newId = generateUUID(); myWordbooks.push({ id: newId, name: name }); currentWordbookId = newId; saveWordbooks(); renderWordbookSelector(); document.getElementById('newWordbookName').value = ""; cardOrder = []; await loadData(); showToast("作成しました"); }
+        
+        // 🆕 単語帳の名前変更機能
+        function renameWordbook() {
+            const currentWb = myWordbooks.find(wb => wb.id === currentWordbookId);
+            if(!currentWb) return;
+            const newName = prompt("単語帳の新しい名前を入力してください", currentWb.name);
+            if(newName && newName.trim() !== "") {
+                currentWb.name = newName.trim();
+                saveWordbooks();
+                renderWordbookSelector();
+                showToast("名前を変更しました");
+            }
+        }
+
         async function importWordbook() { const code = document.getElementById('importCodeInput').value.trim(); if (!code) return; if (!navigator.onLine) { showToast("ネット環境が必要です"); return; } if(myWordbooks.find(wb => wb.id === code)) { showToast("登録済みのコードです"); return; } const name = prompt("単語帳の名前を決めてください", "共有された単語帳"); if(!name) return; myWordbooks.push({ id: code, name: name }); currentWordbookId = code; saveWordbooks(); renderWordbookSelector(); document.getElementById('importCodeInput').value = ""; cardOrder = []; await loadData(); showToast("取得しました"); }
 
         async function loadData() {
@@ -251,7 +297,8 @@
         function loadFromCache() { const cache = localStorage.getItem(`cached_words_${currentWordbookId}`); words = cache ? JSON.parse(cache) : []; }
 
         async function addNewWord() {
-            const q = document.getElementById('inputQuestion').value.trim(); const a = document.getElementById('inputAnswer').value.trim(); if (!q || !a) { showToast("入力してください"); return; }
+            const q = document.getElementById('inputQuestion').value.trim(); const a = document.getElementById('inputAnswer').value.trim(); 
+            if (!q || !a) { showToast("入力してください"); return; }
             const newWordObj = { wordbook_id: currentWordbookId, question: q, answer: a, is_learned: false, correct_count: 0, total_count: 0 };
             words.push(newWordObj); cardOrder = []; localStorage.setItem(`cached_words_${currentWordbookId}`, JSON.stringify(words));
             if (navigator.onLine) supabaseClient.from('words').insert([newWordObj]).then();
@@ -315,11 +362,12 @@
         function moveCard(dir) { cardIndex = (cardIndex + dir + words.length) % words.length; isCardFront = true; renderCard(); }
         function toggleReverse() { isReversedMode = document.getElementById('reverseSwitch').checked; isCardFront = true; renderCard(); }
 
+        // 🆕 削除モードのテキスト変更
         function toggleDeleteMode() {
             isDeleteMode = !isDeleteMode; selectedForDelete.clear();
             const toggleBtn = document.getElementById('toggleDeleteBtn'); const execBtn = document.getElementById('executeDeleteBtn');
             if (isDeleteMode) { toggleBtn.innerText = "キャンセル"; toggleBtn.style.background = "#E5E5EA"; toggleBtn.style.color = "#1C1C1E"; execBtn.style.display = "block"; } 
-            else { toggleBtn.innerText = "🗑️ 一括削除モード"; toggleBtn.style.background = "#E5E5EA"; toggleBtn.style.color = "#007AFF"; execBtn.style.display = "none"; }
+            else { toggleBtn.innerText = "単語削除"; toggleBtn.style.background = "#E5E5EA"; toggleBtn.style.color = "#007AFF"; execBtn.style.display = "none"; }
             renderDictionary();
         }
         function toggleSelectDelete(index) { if (selectedForDelete.has(index)) { selectedForDelete.delete(index); } else { selectedForDelete.add(index); } renderDictionary(); }
